@@ -20,6 +20,8 @@ public interface IPlayerSearchSnapshotReader
 
 /// <summary>
 /// Patch-specific API 15 reader for the SocialList Player Search layout.
+/// Blank-FC names are highlighted in the native list, so the game's own
+/// right-click menu remains the only place where an invitation is initiated.
 /// Fails closed when the expected component structure is unavailable.
 /// </summary>
 public sealed class SocialListSnapshotReader : IPlayerSearchSnapshotReader
@@ -28,6 +30,8 @@ public sealed class SocialListSnapshotReader : IPlayerSearchSnapshotReader
     private const uint CharacterNameNodeId = 8;
     private const uint FreeCompanyNodeId = 23;
 
+    // Stored as packed bytes so this file does not depend on ByteColor's namespace.
+    private readonly Dictionary<nint, uint> originalNameColors = new();
     private readonly IPlayerState playerState;
 
     public SocialListSnapshotReader(IPlayerState playerState)
@@ -73,11 +77,19 @@ public sealed class SocialListSnapshotReader : IPlayerSearchSnapshotReader
                 continue;
 
             var rowManager = &rowComponent->Component->UldManager;
-            var name = ReadText(rowManager, CharacterNameNodeId);
-            if (string.IsNullOrWhiteSpace(name) || !seenNames.Add(name))
+            var nameNode = FindTextNode(rowManager, CharacterNameNodeId);
+            if (nameNode == null)
+                continue;
+
+            var name = nameNode->NodeText.ToString();
+            if (string.IsNullOrWhiteSpace(name))
                 continue;
 
             var freeCompany = ReadText(rowManager, FreeCompanyNodeId);
+            HighlightNativeName(nameNode, string.IsNullOrWhiteSpace(freeCompany));
+
+            if (!seenNames.Add(name))
+                continue;
 
             results.Add(new PlayerSearchResult(
                 name.Trim(),
@@ -89,7 +101,31 @@ public sealed class SocialListSnapshotReader : IPlayerSearchSnapshotReader
         return results;
     }
 
-    private static unsafe string ReadText(AtkUldManager* manager, uint nodeId)
+    private unsafe void HighlightNativeName(AtkTextNode* nameNode, bool eligible)
+    {
+        var address = (nint)nameNode;
+        var packedColor = (uint*)&nameNode->TextColor;
+
+        if (!originalNameColors.TryGetValue(address, out var originalColor))
+        {
+            originalColor = *packedColor;
+            originalNameColors[address] = originalColor;
+        }
+
+        if (!eligible)
+        {
+            *packedColor = originalColor;
+            return;
+        }
+
+        // Bright green: visible against both the default and selected row backgrounds.
+        nameNode->TextColor.R = 120;
+        nameNode->TextColor.G = 255;
+        nameNode->TextColor.B = 140;
+        nameNode->TextColor.A = 255;
+    }
+
+    private static unsafe AtkTextNode* FindTextNode(AtkUldManager* manager, uint nodeId)
     {
         for (var index = 0; index < manager->NodeListCount; index++)
         {
@@ -97,10 +133,16 @@ public sealed class SocialListSnapshotReader : IPlayerSearchSnapshotReader
             if (node == null || node->NodeId != nodeId || node->Type != NodeType.Text)
                 continue;
 
-            return node->GetAsAtkTextNode()->NodeText.ToString();
+            return node->GetAsAtkTextNode();
         }
 
-        return string.Empty;
+        return null;
+    }
+
+    private static unsafe string ReadText(AtkUldManager* manager, uint nodeId)
+    {
+        var node = FindTextNode(manager, nodeId);
+        return node == null ? string.Empty : node->NodeText.ToString();
     }
 }
 
@@ -135,7 +177,7 @@ public sealed class PlayerSearchCapture : IDisposable
     private void OnResultsChanged(AddonEvent eventType, AddonArgs args)
     {
         var now = DateTimeOffset.UtcNow;
-        if (now - lastCapture < TimeSpan.FromMilliseconds(750))
+        if (now - lastCapture < TimeSpan.FromMilliseconds(250))
             return;
 
         lastCapture = now;
