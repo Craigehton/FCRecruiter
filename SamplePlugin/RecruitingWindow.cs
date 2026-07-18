@@ -23,7 +23,8 @@ public sealed class RecruitingWindow : Window
 
     public override void Draw()
     {
-        ImGui.TextWrapped("Manual review only. This window never searches, sends tells, targets, or invites.");
+        ImGui.TextWrapped("Blank-FC players are highlighted green in FFXIV's native Player Search. Right-click the green native name and manually choose Invite to Free Company.");
+        ImGui.TextWrapped("This assistant never searches, opens menus, sends tells, targets, or invites automatically.");
         ImGui.Separator();
         ImGui.InputText("Character", ref name, 64);
         ImGui.SameLine();
