@@ -25,6 +25,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RecruitingWindow recruitingWindow;
     private readonly HashSet<string> tracedEvents = new(StringComparer.Ordinal);
     private bool tracingAddons;
+    private bool socialListValuesLogged;
 
     public Plugin()
     {
@@ -71,6 +72,7 @@ public sealed class Plugin : IDalamudPlugin
         if (tracingAddons)
         {
             tracedEvents.Clear();
+            socialListValuesLogged = false;
             AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonEvent);
             AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, OnAddonEvent);
             AddonLifecycle.RegisterListener(AddonEvent.PostUpdate, OnAddonEvent);
@@ -92,29 +94,32 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var key = $"{eventType}:{name}";
-        if (!tracedEvents.Add(key))
-            return;
-
-        Log.Information(
-            "FCRecruiter addon event: {EventType} -> {AddonName}",
-            eventType,
-            name
-        );
+        if (tracedEvents.Add(key))
+        {
+            Log.Information(
+                "FCRecruiter addon event: {EventType} -> {AddonName}",
+                eventType,
+                name
+            );
+        }
 
         if (!name.Equals("SocialList", StringComparison.Ordinal))
             return;
 
-        if (args is AddonSetupArgs setupArgs)
-            LogAtkValues("PostSetup", setupArgs.AtkValueEnumerable);
+        if (eventType == AddonEvent.PostUpdate && !socialListValuesLogged)
+            socialListValuesLogged = LogAtkValues("PostUpdate", args.Addon.AtkValues);
+        else if (args is AddonSetupArgs setupArgs)
+            socialListValuesLogged |= LogAtkValues("PostSetup", setupArgs.AtkValueEnumerable);
         else if (args is AddonRefreshArgs refreshArgs)
-            LogAtkValues("PostRefresh", refreshArgs.AtkValueEnumerable);
+            socialListValuesLogged |= LogAtkValues("PostRefresh", refreshArgs.AtkValueEnumerable);
     }
 
-    private static void LogAtkValues(
+    private static bool LogAtkValues(
         string source,
         IEnumerable<Dalamud.Game.NativeWrapper.AtkValuePtr> values)
     {
         var index = 0;
+        var foundText = false;
         foreach (var value in values)
         {
             object? boxed;
@@ -131,6 +136,7 @@ public sealed class Plugin : IDalamudPlugin
 
             if (boxed is string text && !string.IsNullOrWhiteSpace(text))
             {
+                foundText = true;
                 Log.Information(
                     "FCRecruiter SocialList {Source} value[{Index}] ({Type}) = {Text}",
                     source,
@@ -142,6 +148,8 @@ public sealed class Plugin : IDalamudPlugin
 
             index++;
         }
+
+        return foundText;
     }
 
     private void ToggleRecruitingWindow() => recruitingWindow.Toggle();
