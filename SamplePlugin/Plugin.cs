@@ -7,6 +7,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace SamplePlugin;
 
@@ -25,6 +26,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RecruitingWindow recruitingWindow;
     private readonly HashSet<string> tracedEvents = new(StringComparer.Ordinal);
     private bool tracingAddons;
+    private bool socialListValuesLogged;
 
     public Plugin()
     {
@@ -71,6 +73,7 @@ public sealed class Plugin : IDalamudPlugin
         if (tracingAddons)
         {
             tracedEvents.Clear();
+            socialListValuesLogged = false;
             AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonEvent);
             AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, OnAddonEvent);
             AddonLifecycle.RegisterListener(AddonEvent.PostUpdate, OnAddonEvent);
@@ -92,14 +95,97 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var key = $"{eventType}:{name}";
-        if (!tracedEvents.Add(key))
+        if (tracedEvents.Add(key))
+        {
+            Log.Information(
+                "FCRecruiter addon event: {EventType} -> {AddonName}",
+                eventType,
+                name
+            );
+        }
+
+        if (!name.Equals("SocialList", StringComparison.Ordinal))
             return;
 
-        Log.Information(
-            "FCRecruiter addon event: {EventType} -> {AddonName}",
-            eventType,
-            name
-        );
+        if (eventType == AddonEvent.PostUpdate && !socialListValuesLogged)
+        {
+            socialListValuesLogged = LogAtkValues("PostUpdate", args.Addon.AtkValues);
+            if (!socialListValuesLogged)
+                socialListValuesLogged = LogTextNodes(args.Addon.Address);
+        }
+        else if (args is AddonSetupArgs setupArgs)
+            socialListValuesLogged |= LogAtkValues("PostSetup", setupArgs.AtkValueEnumerable);
+        else if (args is AddonRefreshArgs refreshArgs)
+            socialListValuesLogged |= LogAtkValues("PostRefresh", refreshArgs.AtkValueEnumerable);
+    }
+
+    private static bool LogAtkValues(
+        string source,
+        IEnumerable<Dalamud.Game.NativeWrapper.AtkValuePtr> values)
+    {
+        var index = 0;
+        var foundText = false;
+        foreach (var value in values)
+        {
+            object? boxed;
+            try
+            {
+                boxed = value.GetValue();
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Could not read SocialList AtkValue {Index}", index);
+                index++;
+                continue;
+            }
+
+            if (boxed is string text && !string.IsNullOrWhiteSpace(text))
+            {
+                foundText = true;
+                Log.Information(
+                    "FCRecruiter SocialList {Source} value[{Index}] ({Type}) = {Text}",
+                    source,
+                    index,
+                    value.ValueType,
+                    text
+                );
+            }
+
+            index++;
+        }
+
+        return foundText;
+    }
+
+    private static unsafe bool LogTextNodes(nint addonAddress)
+    {
+        if (addonAddress == nint.Zero)
+            return false;
+
+        var addon = (AtkUnitBase*)addonAddress;
+        var foundText = false;
+
+        for (var index = 0; index < addon->UldManager.NodeListCount; index++)
+        {
+            var node = addon->UldManager.NodeList[index];
+            if (node == null || node->Type != NodeType.Text)
+                continue;
+
+            var textNode = node->GetAsAtkTextNode();
+            var text = textNode->NodeText.ToString();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            foundText = true;
+            Log.Information(
+                "FCRecruiter SocialList node[{Index}] id={NodeId} text={Text}",
+                index,
+                node->NodeId,
+                text
+            );
+        }
+
+        return foundText;
     }
 
     private void ToggleRecruitingWindow() => recruitingWindow.Toggle();
