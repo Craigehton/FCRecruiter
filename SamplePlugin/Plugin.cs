@@ -25,6 +25,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RecruitingService recruitingService;
     private readonly RecruitingWindow recruitingWindow;
     private readonly HashSet<string> tracedEvents = new(StringComparer.Ordinal);
+    private readonly HashSet<string> tracedNodeTexts = new(StringComparer.Ordinal);
     private bool tracingAddons;
     private bool socialListValuesLogged;
 
@@ -73,6 +74,7 @@ public sealed class Plugin : IDalamudPlugin
         if (tracingAddons)
         {
             tracedEvents.Clear();
+            tracedNodeTexts.Clear();
             socialListValuesLogged = false;
             AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonEvent);
             AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, OnAddonEvent);
@@ -107,11 +109,12 @@ public sealed class Plugin : IDalamudPlugin
         if (!name.Equals("SocialList", StringComparison.Ordinal))
             return;
 
-        if (eventType == AddonEvent.PostUpdate && !socialListValuesLogged)
+        if (eventType == AddonEvent.PostUpdate)
         {
-            socialListValuesLogged = LogAtkValues("PostUpdate", args.Addon.AtkValues);
             if (!socialListValuesLogged)
-                socialListValuesLogged = LogTextNodes(args.Addon.Address);
+                socialListValuesLogged = LogAtkValues("PostUpdate", args.Addon.AtkValues);
+
+            LogTextNodes(args.Addon.Address);
         }
         else if (args is AddonSetupArgs setupArgs)
             socialListValuesLogged |= LogAtkValues("PostSetup", setupArgs.AtkValueEnumerable);
@@ -157,14 +160,12 @@ public sealed class Plugin : IDalamudPlugin
         return foundText;
     }
 
-    private static unsafe bool LogTextNodes(nint addonAddress)
+    private unsafe void LogTextNodes(nint addonAddress)
     {
         if (addonAddress == nint.Zero)
-            return false;
+            return;
 
         var addon = (AtkUnitBase*)addonAddress;
-        var foundText = false;
-
         for (var index = 0; index < addon->UldManager.NodeListCount; index++)
         {
             var node = addon->UldManager.NodeList[index];
@@ -176,7 +177,10 @@ public sealed class Plugin : IDalamudPlugin
             if (string.IsNullOrWhiteSpace(text))
                 continue;
 
-            foundText = true;
+            var key = $"{node->NodeId}:{text}";
+            if (!tracedNodeTexts.Add(key))
+                continue;
+
             Log.Information(
                 "FCRecruiter SocialList node[{Index}] id={NodeId} text={Text}",
                 index,
@@ -184,8 +188,6 @@ public sealed class Plugin : IDalamudPlugin
                 text
             );
         }
-
-        return foundText;
     }
 
     private void ToggleRecruitingWindow() => recruitingWindow.Toggle();
