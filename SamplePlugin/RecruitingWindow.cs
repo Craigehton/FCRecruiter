@@ -7,16 +7,13 @@ namespace SamplePlugin;
 public sealed class RecruitingWindow : Window
 {
     private readonly RecruitingService service;
-    private readonly NativePlayerMenu nativePlayerMenu;
     private string name = "";
     private string world = "";
     private string feedback = "";
 
-    public RecruitingWindow(RecruitingService service, NativePlayerMenu nativePlayerMenu)
-        : base("FC Recruiting Assistant")
+    public RecruitingWindow(RecruitingService service) : base("FC Recruiting Assistant")
     {
         this.service = service;
-        this.nativePlayerMenu = nativePlayerMenu;
         SizeConstraints = new WindowSizeConstraints
         {
             MinimumSize = new System.Numerics.Vector2(720, 420),
@@ -26,8 +23,7 @@ public sealed class RecruitingWindow : Window
 
     public override void Draw()
     {
-        ImGui.TextWrapped("Use Player menu on a candidate still present in the live search results, then manually choose Invite to Free Company in FFXIV's native menu.");
-        ImGui.TextWrapped("This assistant never selects a menu command, sends a tell, targets, or invites automatically.");
+        ImGui.TextWrapped("Manual review only. This assistant never opens native menus, sends tells, targets, or invites.");
         ImGui.Separator();
         ImGui.InputText("Character", ref name, 64);
         ImGui.SameLine();
@@ -43,7 +39,7 @@ public sealed class RecruitingWindow : Window
 
         if (!ImGui.BeginTable("Candidates", 6,
                 ImGuiTableFlags.RowBg | ImGuiTableFlags.Borders | ImGuiTableFlags.ScrollY)) return;
-        foreach (var heading in new[] { "Player", "No FC?", "Status", "Eligibility", "Actions", "Outcome" })
+        foreach (var heading in new[] { "Player", "No FC?", "Status", "Eligibility", "Outreach", "Outcome" })
             ImGui.TableSetupColumn(heading);
         ImGui.TableHeadersRow();
 
@@ -65,19 +61,11 @@ public sealed class RecruitingWindow : Window
             var eligible = service.Check(c, DateTimeOffset.UtcNow);
             ImGui.TextWrapped(eligible.Reason);
             ImGui.TableNextColumn();
-
-            ImGui.BeginDisabled(!c.FcAbsenceManuallyConfirmed);
-            if (ImGui.Button("Player menu"))
-                nativePlayerMenu.TryOpen(c, out feedback);
-            ImGui.EndDisabled();
-
-            ImGui.SameLine();
             ImGui.BeginDisabled(!eligible.Allowed);
             if (ImGui.Button("Copy /tell")) ImGui.SetClipboardText(service.PrepareTellCommand(c));
             ImGui.SameLine();
             if (ImGui.Button("I sent it")) service.MarkContacted(c, DateTimeOffset.UtcNow);
             ImGui.EndDisabled();
-
             ImGui.TableNextColumn();
             if (ImGui.Button("Declined")) { c.Status = CandidateStatus.Declined; service.Save(); }
             ImGui.SameLine();
