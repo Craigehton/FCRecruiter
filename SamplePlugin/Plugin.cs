@@ -7,6 +7,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace SamplePlugin;
 
@@ -107,7 +108,11 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         if (eventType == AddonEvent.PostUpdate && !socialListValuesLogged)
+        {
             socialListValuesLogged = LogAtkValues("PostUpdate", args.Addon.AtkValues);
+            if (!socialListValuesLogged)
+                socialListValuesLogged = LogTextNodes(args.Addon.Address);
+        }
         else if (args is AddonSetupArgs setupArgs)
             socialListValuesLogged |= LogAtkValues("PostSetup", setupArgs.AtkValueEnumerable);
         else if (args is AddonRefreshArgs refreshArgs)
@@ -147,6 +152,37 @@ public sealed class Plugin : IDalamudPlugin
             }
 
             index++;
+        }
+
+        return foundText;
+    }
+
+    private static unsafe bool LogTextNodes(nint addonAddress)
+    {
+        if (addonAddress == nint.Zero)
+            return false;
+
+        var addon = (AtkUnitBase*)addonAddress;
+        var foundText = false;
+
+        for (var index = 0; index < addon->UldManager.NodeListCount; index++)
+        {
+            var node = addon->UldManager.NodeList[index];
+            if (node == null || node->Type != NodeType.Text)
+                continue;
+
+            var textNode = node->GetAsAtkTextNode();
+            var text = textNode->NodeText.ToString();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            foundText = true;
+            Log.Information(
+                "FCRecruiter SocialList node[{Index}] id={NodeId} text={Text}",
+                index,
+                node->NodeId,
+                text
+            );
         }
 
         return foundText;
