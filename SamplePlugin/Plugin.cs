@@ -30,8 +30,7 @@ public sealed class Plugin : IDalamudPlugin
             recruitingConfig
         );
 
-        var nativePlayerMenu = new NativePlayerMenu(PlayerState, Log);
-        recruitingWindow = new RecruitingWindow(recruitingService, nativePlayerMenu);
+        recruitingWindow = new RecruitingWindow(recruitingService);
         windowSystem.AddWindow(recruitingWindow);
 
         var snapshotReader = new SocialListSnapshotReader(PlayerState);
