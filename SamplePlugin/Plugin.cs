@@ -166,26 +166,61 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var addon = (AtkUnitBase*)addonAddress;
-        for (var index = 0; index < addon->UldManager.NodeListCount; index++)
+        var visitedManagers = new HashSet<nint>();
+        LogUldManager(&addon->UldManager, "root", 0, visitedManagers);
+    }
+
+    private unsafe void LogUldManager(
+        AtkUldManager* manager,
+        string path,
+        int depth,
+        HashSet<nint> visitedManagers)
+    {
+        if (manager == null || depth > 8)
+            return;
+
+        if (!visitedManagers.Add((nint)manager))
+            return;
+
+        for (var index = 0; index < manager->NodeListCount; index++)
         {
-            var node = addon->UldManager.NodeList[index];
-            if (node == null || node->Type != NodeType.Text)
+            var node = manager->NodeList[index];
+            if (node == null)
                 continue;
 
-            var textNode = node->GetAsAtkTextNode();
-            var text = textNode->NodeText.ToString();
-            if (string.IsNullOrWhiteSpace(text))
+            var nodePath = $"{path}/{index}";
+
+            if (node->Type == NodeType.Text)
+            {
+                var textNode = node->GetAsAtkTextNode();
+                var text = textNode->NodeText.ToString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    var key = $"{(nint)node:X}:{text}";
+                    if (tracedNodeTexts.Add(key))
+                    {
+                        Log.Information(
+                            "FCRecruiter SocialList path={Path} id={NodeId} text={Text}",
+                            nodePath,
+                            node->NodeId,
+                            text
+                        );
+                    }
+                }
+            }
+
+            if ((ushort)node->Type < 1000)
                 continue;
 
-            var key = $"{node->NodeId}:{text}";
-            if (!tracedNodeTexts.Add(key))
+            var componentNode = node->GetAsAtkComponentNode();
+            if (componentNode == null || componentNode->Component == null)
                 continue;
 
-            Log.Information(
-                "FCRecruiter SocialList node[{Index}] id={NodeId} text={Text}",
-                index,
-                node->NodeId,
-                text
+            LogUldManager(
+                &componentNode->Component->UldManager,
+                nodePath,
+                depth + 1,
+                visitedManagers
             );
         }
     }
