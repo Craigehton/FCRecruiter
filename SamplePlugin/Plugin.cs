@@ -1,4 +1,6 @@
-﻿using Dalamud.Game.Command;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -17,11 +19,16 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService]
     internal static IPluginLog Log { get; private set; } = null!;
 
+    [PluginService]
+    internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
+
     private const string CommandName = "/fcrecruit";
+    private const string TraceCommandName = "/fctrace";
 
     private readonly WindowSystem windowSystem = new("FCRecruiter");
     private readonly RecruitingService recruitingService;
     private readonly RecruitingWindow recruitingWindow;
+    private bool tracingAddons;
 
     public Plugin()
     {
@@ -43,6 +50,14 @@ public sealed class Plugin : IDalamudPlugin
             }
         );
 
+        CommandManager.AddHandler(
+            TraceCommandName,
+            new CommandInfo(OnTraceCommand)
+            {
+                HelpMessage = "Toggle temporary addon refresh tracing."
+            }
+        );
+
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += ToggleRecruitingWindow;
 
@@ -51,9 +66,13 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        if (tracingAddons)
+            AddonLifecycle.UnregisterListener(OnAddonRefresh);
+
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleRecruitingWindow;
 
+        CommandManager.RemoveHandler(TraceCommandName);
         CommandManager.RemoveHandler(CommandName);
 
         windowSystem.RemoveAllWindows();
@@ -62,6 +81,34 @@ public sealed class Plugin : IDalamudPlugin
     private void OnCommand(string command, string arguments)
     {
         ToggleRecruitingWindow();
+    }
+
+    private void OnTraceCommand(string command, string arguments)
+    {
+        tracingAddons = !tracingAddons;
+
+        if (tracingAddons)
+        {
+            AddonLifecycle.RegisterListener(
+                AddonEvent.PostRefresh,
+                OnAddonRefresh
+            );
+
+            Log.Information("FCRecruiter addon tracing enabled.");
+        }
+        else
+        {
+            AddonLifecycle.UnregisterListener(OnAddonRefresh);
+            Log.Information("FCRecruiter addon tracing disabled.");
+        }
+    }
+
+    private void OnAddonRefresh(AddonEvent eventType, AddonArgs args)
+    {
+        Log.Information(
+            "FCRecruiter refreshed addon: {AddonName}",
+            args.AddonName
+        );
     }
 
     private void ToggleRecruitingWindow()
