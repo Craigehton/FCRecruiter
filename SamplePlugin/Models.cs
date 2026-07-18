@@ -1,3 +1,4 @@
+using System;
 namespace SamplePlugin;
 
 public enum CandidateStatus

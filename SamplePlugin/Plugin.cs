@@ -28,7 +28,7 @@ public sealed class Plugin : IDalamudPlugin
         var recruitingConfig = new RecruitingConfig();
 
         recruitingService = new RecruitingService(
-            PluginInterface.GetPluginConfigDirectory().FullName,
+            PluginInterface.GetPluginConfigDirectory(),
             recruitingConfig
         );
 

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Plugin.Services;
