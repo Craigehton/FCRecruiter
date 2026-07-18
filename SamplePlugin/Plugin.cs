@@ -91,7 +91,7 @@ public sealed class Plugin : IDalamudPlugin
             !name.Contains("Pc", StringComparison.OrdinalIgnoreCase))
             return;
 
-        var key = $\"{eventType}:{name}\";
+        var key = $"{eventType}:{name}";
         if (!tracedEvents.Add(key))
             return;
 
