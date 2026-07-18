@@ -91,7 +91,7 @@ public sealed class Plugin : IDalamudPlugin
             !name.Contains("Pc", StringComparison.OrdinalIgnoreCase))
             return;
 
-        var key = $"{eventType}:{name}";
+        var key = $\"{eventType}:{name}\";
         if (!tracedEvents.Add(key))
             return;
 
@@ -100,6 +100,48 @@ public sealed class Plugin : IDalamudPlugin
             eventType,
             name
         );
+
+        if (!name.Equals("SocialList", StringComparison.Ordinal))
+            return;
+
+        if (args is AddonSetupArgs setupArgs)
+            LogAtkValues("PostSetup", setupArgs.AtkValueEnumerable);
+        else if (args is AddonRefreshArgs refreshArgs)
+            LogAtkValues("PostRefresh", refreshArgs.AtkValueEnumerable);
+    }
+
+    private static void LogAtkValues(
+        string source,
+        IEnumerable<Dalamud.Game.NativeWrapper.AtkValuePtr> values)
+    {
+        var index = 0;
+        foreach (var value in values)
+        {
+            object? boxed;
+            try
+            {
+                boxed = value.GetValue();
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Could not read SocialList AtkValue {Index}", index);
+                index++;
+                continue;
+            }
+
+            if (boxed is string text && !string.IsNullOrWhiteSpace(text))
+            {
+                Log.Information(
+                    "FCRecruiter SocialList {Source} value[{Index}] ({Type}) = {Text}",
+                    source,
+                    index,
+                    value.ValueType,
+                    text
+                );
+            }
+
+            index++;
+        }
     }
 
     private void ToggleRecruitingWindow() => recruitingWindow.Toggle();
